@@ -7,110 +7,148 @@
  * MIT Licensed
  */
 
-const NodeHelper = require('node_helper');
-const usonic = require('mmm-usonic');
-const statistics = require('math-statistics');
-const gpio = require('mmm-gpio');
+/* jshint node: true, esversion:6 */
 
+const NodeHelper = require('node_helper');
+const statistics = require('math-statistics');
+const Gpio = require('onoff').Gpio;
+let { usleep } = require('usleep');
 
 module.exports = NodeHelper.create({
-	start: function () {
-		const self = this;
-		usonic.init(function (error) {
-			if (error) {
-				console.log(error);
-			} else {
-				self.initSensor();
-                        }
-		});	
-		gpio.init(function (error) {
-			if (error) {
-				console.log(error);
-			} else {
-				self.initSensor();
-			}
-		});
-	},
-	
-	socketNotificationReceived: function (notification, payload) {
-		const self = this;
-		this.config = payload;
-		var buttonWait = 0;
-		var sensorLeft;
-		var sensorRight;
-		if ( notification === 'CALIBRATE') {
+    // "Private" node helper configuration options.
+    _config: {
+        MICROSECONDS_PER_CM: 1e6 / 34321,
+        SAMPLE_SIZE: 5,
+        TRIGGER_PULSE_TIME: 10, // microseconds (us)
+        SWIPE_DIFFERENCE_MULTIPLE: 1.3
+    },
 
-			self.sensorLeft = usonic.createSensor(self.config.echoLeftPin, self.config.triggerLeftPin, self.config.sensorTimeout);
-			self.sensorRight = usonic.createSensor(self.config.echoRightPin, self.config.triggerRightPin, self.config.sensorTimeout);
-			var distances = [this.sensorLeft().toFixed(2), this.sensorRight().toFixed(2)];
-			self.sendSocketNotification('CALIBRATION', distances);
-		} else if (notification === 'INIT') {
-			self.sensorLeft = usonic.createSensor(self.config.echoLeftPin, self.config.triggerLeftPin, self.config.sensorTimeout);
-			self.sensorRight = usonic.createSensor(self.config.echoRightPin, self.config.triggerRightPin, self.config.sensorTimeout);
+    start: function() {
+        this.config = {};
+        this.started = false;
+        this.mode = "off";
+    },
 
-			if (this.sensorLeft().toFixed(2) <= self.config.leftDistance) {
-				var distancesLeft;
-				var distancesRight;
-				var i = 5;
-				var countdownTime = self.config.swipeSpeed / i;
-				(function measure(x) {
-					if(x == i) {
-					self.distancesLeft = [];
-					self.distancesRight = [];
-					} else if (x == 1 ) {
-						var avgLeft = statistics.median(self.distancesLeft).toFixed(0);
-						var avgRight = statistics.median(self.distancesRight).toFixed(0);
-						if( avgLeft <= self.config.leftDistance && avgRight <= self.config.rightDistance) {
-							self.sendSocketNotification('MOVEMENT', 'Press');
-						} else if ( avgRight * 1.3 <= avgLeft ) {
-							self.sendSocketNotification('MOVEMENT', 'Swipe Right');
-						}
-					}
-					setTimeout(function () {
-						self.distancesLeft.push(self.sensorLeft());
-						self.distancesRight.push(self.sensorRight());
-						if(--x) measure(x);
-					}, countdownTime);
-				})(i);	
+    setupListener: function() {
+        this.trigger = new Gpio(this.config.triggerPin, "out");
+        this.echoLeft = new Gpio(this.config.echoLeftPin, "in", "both");
+        this.echoRight = new Gpio(this.config.echoRightPin, "in", "both");
+        this.startTick = { Left: [0, 0], Right: [0, 0] };
+        this.lastDistance = { Left: 0.0, Right: 0.0 };
+        this.measureLeftCb = this.measure.bind(this, "Left");
+        this.measureRightCb = this.measure.bind(this, "Right");
+    },
 
-			} else if (this.sensorRight().toFixed(2) <= self.config.rightDistance) {
-				var distancesLeft;
-				var distancesRight;
-				var i = 5;
-				var countdownTime = self.config.swipeSpeed / i;
-				(function measure(x) {
-					if(x == i) {
-					self.distancesLeft = [];
-					self.distancesRight = [];
-					} else if (x == 1 ) {
-						var avgLeft = statistics.median(self.distancesLeft).toFixed(0);
-						var avgRight = statistics.median(self.distancesRight).toFixed(0);
+    startListener: function() {
+        this.echoLeft.watch(this.measureLeftCb);
+        this.echoRight.watch(this.measureRightCb);
+        this.mode = "waiting";
+        this.sampleInterval = setInterval(this.doTrigger.bind(this), this.config.sampleInterval);
+    },
 
-						if( avgLeft <= self.config.leftDistance && avgRight <= self.config.rightDistance) {
-							self.sendSocketNotification('MOVEMENT', 'Press');
-						} else if ( avgLeft * 1.3 <= avgRight ) {
-							self.sendSocketNotification('MOVEMENT', 'Swipe Left');
-						}
-					}
-					setTimeout(function () {
-						self.distancesLeft.push(self.sensorLeft());
-						self.distancesRight.push(self.sensorRight());
-						if(--x) measure(x);
-					}, countdownTime);
-				})(i);
-			} else {
-				self.sendSocketNotification('STATUS', "Waiting for Movement");
-			}
-		} else if (notification === 'PRESS') {
-			var trigger = gpio.createOutput(payload);
-			setTimeout(function(){
-				trigger(false);
-			},1000);
-				trigger(true);
-		} 	
-	},
-	
-	initSensor: function () {
-	}
-  
+    stopListener: function() {
+        this.echoLeft.unwatch(this.measureLeftCb);
+        this.echoRight.unwatch(this.measureRightCb);
+        this.mode = "off";
+        clearInterval(this.sampleInterval);
+    },
+
+    doTrigger: function() {
+        // Set trigger high for 10 microseconds
+        this.trigger.writeSync(1);
+        usleep(this._config.TRIGGER_PULSE_TIME);
+        this.trigger.writeSync(0);
+    },
+
+    measure: function(which, err, value) {
+        var diff, usDiff, dist;
+        if (err) {
+            throw err;
+        }
+        if (value == 1) {
+            this.startTick[which] = process.hrtime();
+        } else {
+            diff = process.hrtime(this.startTick[which]);
+            // Full conversion of hrtime to us => [0]*1000000 + [1]/1000
+            usDiff = diff[0] * 1000000 + diff[1] / 1000;
+
+            if (this.mode !== "detect" && usDiff > this.config.sensorTimeout) { // Ignore bad measurements
+                return;
+            }
+
+            dist = usDiff / 2 / this._config.MICROSECONDS_PER_CM;
+
+            this.lastDistance[which] = dist.toFixed(2);
+            
+            if (this.config.calibrate) {
+                this.sendSocketNotification('CALIBRATION', this.lastDistance);
+            }
+
+            if (this.mode === "waiting") {
+                this.monitor(which, dist);
+            } else if (this.mode === "detect") {
+                this.detect(which, dist);
+            }
+        }
+    },
+
+    monitor: function(which, dist) {
+        if ((which === "Left" && dist <= this.config.leftDistance) ||
+            (which === "Right" && dist <= this.config.rightDistance)) {
+            var countdownTime = this.config.swipeSpeed / this._config.SAMPLE_SIZE;
+            this.mode = "detect";
+            this.gestureInfo = {
+                distances: { Right: [], Left: [] },
+                count: { Right: 0, Left: 0 },
+                avgerages: { Right: 0.0, Left: 0.0 },
+            };
+            clearInterval(this.sampleInterval);
+            this.sampleInterval = setInterval(this.doTrigger.bind(this), countdownTime);
+        }
+    },
+
+    detect: function(which, dist) {
+        if (this.gestureInfo.count[which] < this._config.SAMPLE_SIZE) {
+            this.gestureInfo.distances[which].push(dist);
+            this.gestureInfo.count[which] ++;
+        } else if (this.gestureInfo.count[which] === this._config.SAMPLE_SIZE) {
+            this.gestureInfo.distances[which].push(dist);
+            this.gestureInfo.avgerages[which] = statistics.median(this.gestureInfo.distances[which]).toFixed(0);
+            if (this.gestureInfo.count.Left === this._config.SAMPLE_SIZE && 
+                this.gestureInfo.count.Right === this._config.SAMPLE_SIZE) {
+                this.processSwipe();
+            }
+        }
+    },
+
+    processSwipe: function() {
+        this.mode = "waiting";
+        clearInterval(this.sampleInterval);
+        this.sampleInterval = setInterval(this.doTrigger.bind(this), this.config.sampleInterval);
+
+        if (this.gestureInfo.avgerages.Left <= this.config.leftDistance && 
+            this.gestureInfo.avgerages.Right <= this.config.rightDistance) {
+            this.sendSocketNotification('MOVEMENT', 'Press');
+        } else if (this.gestureInfo.avgerages.Right * this._config.SWIPE_DIFFERENCE_MULTIPLE <= this.gestureInfo.avgerages.Left) {
+            this.sendSocketNotification('MOVEMENT', 'Swipe Right');
+        } else if (this.gestureInfo.avgerages.Left * this._config.SWIPE_DIFFERENCE_MULTIPLE <= this.gestureInfo.avgerages.Right) {
+            this.sendSocketNotification('MOVEMENT', 'Swipe Left');
+        }
+    },
+
+    socketNotificationReceived: function(notification, payload) {
+        var self = this;
+        if (notification === 'CONFIG') {
+            if (!this.started) {
+                this.config = payload;
+                this.setupListener();
+                this.started = true;
+            }
+            this.sendSocketNotification("STARTED", null);
+        } else if (notification === 'START') {
+            this.startListener();
+        } else if (notification === 'STOP') {
+            this.stopListener();
+        }
+    },
 });

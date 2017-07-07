@@ -2,6 +2,25 @@
 The `MMM-Swipe` program is a <a href="https://github.com/MichMich/MagicMirror">MagicMirror</a> addon module.
 This module uses 2 HC-SR04 ultrasonic sensors to determing hand position to produce a "Swipe Left", "Swipe Right", or "Press"
 
+# DEVELOPMENT NOTE:
+
+This is a fork of the original version here: https://github.com/mochman/MMM-Swipe.  Thank you to mochman for the inital devlopment.
+
+This fork includes a major refactoring of the `node_helper` script and uses only the [`onoff`](https://www.npmjs.com/package/onoff) node module. This eliminates the need to run the MagicMirror with sudo to access the GPIO pins on a Raspberry Pi.
+
+Refactoring has been completed, and this should be very close to a fully functional module, but it requires testing. As of now, no further development is planned by me at this time as the sensors make an audible sound that the dog doesn't like, which means I'll be taking a new direction. 
+
+## Differences from original:
+
+* Uses `onoff` node module instead of `mmm-usonic` and `mmm-gpio`
+* No SUDO required
+* Sensors/detection can be started/stopped automatically with the `autoStart` configuration option, or can be started/stopped by sending a notification from another module: e.g.: `this.sendNotification("SWIPE_CONTROL", "START")`.
+* Testing scripts included in the `usonic` folder if you want to play around with the sensors. Run them using `node usonic/testingXXX.js` from the MMM-Swipe folder. Also includes a script to use `pigpio` instead of `onoff` (still requires sudo).
+* **Wiring difference** Wiring is based off the `pigpio` sample on [this site](https://github.com/fivdi/pigpio#measure-distance-with-a-hc-sr04-ultrasonic-sensor) which adds a voltage divider to lower the input back to the RPi to 3.3VDC.  It also uses a single trigger pin, simply connect the trigger pins for each sensor together and then connect one to the GPIO pin on the RPi.
+
+
+# ORIGINAL README BELOW
+
 ## Installing the module
 1. Navigate into your MagicMirror's `modules` folder and execute `git clone https://github.com/mochman/MMM-Swipe.git`.  A new folder labeled `MMM-Swipe` will appear, cd into it.
 2. Execute `npm install` to install the dependencies
