@@ -4,27 +4,25 @@ This module uses 2 HC-SR04 ultrasonic sensors to determing hand position to prod
 
 # DEVELOPMENT NOTE:
 
-This is a fork of the original version here: https://github.com/mochman/MMM-Swipe.  Thank you to mochman for the inital devlopment.
+This is a fork of [MMM-Swipe](https://github.com/shbatm/MMM-Swipe) by shbatm. Thank you to shbatm and mochman, who created the initial module, for their work.
 
-This fork includes a major refactoring of the `node_helper` script and uses only the [`onoff`](https://www.npmjs.com/package/onoff) node module. This eliminates the need to run the MagicMirror with sudo to access the GPIO pins on a Raspberry Pi.
-
-Refactoring has been completed, and this should be very close to a fully functional module, but it requires testing. As of now, no further development is planned by me at this time as the sensors make an audible sound that the dog doesn't like, which means I'll be taking a new direction. 
-
-## Differences from original:
+## Differences from original (made by shbatm):
 
 * Uses `onoff` node module instead of `mmm-usonic` and `mmm-gpio`
 * No SUDO required
 * Sensors/detection can be started/stopped automatically with the `autoStart` configuration option, or can be started/stopped by sending a notification from another module: e.g.: `this.sendNotification("SWIPE_CONTROL", "START")`.
 * Testing scripts included in the `usonic` folder if you want to play around with the sensors. Run them using `node usonic/testingXXX.js` from the MMM-Swipe folder. Also includes a script to use `pigpio` instead of `onoff` (still requires sudo).
-* **Wiring difference** Wiring is based off the `pigpio` sample on [this site](https://github.com/fivdi/pigpio#measure-distance-with-a-hc-sr04-ultrasonic-sensor) which adds a voltage divider to lower the input back to the RPi to 3.3VDC.  It also uses a single trigger pin, simply connect the trigger pins for each sensor together and then connect one to the GPIO pin on the RPi.
 
-
-# ORIGINAL README BELOW
+## Differences from the fork (made by me):
+* Different method to detect a swipe
+* Some small displaying changes
+* Make it compatible to [MMM-Pages](https://github.com/edward-shen/MMM-pages)
+* **Wiring** I kept shbatm's idea of using only one trigger pin, but I wired my sensors with only one 1k Ohm resistor per sensor (see image)
+![image](https://raw.githubusercontent.com/clebert/r-pi-usonic/master/resources/hcsr04.png "HC-SR05 wiring")
 
 ## Installing the module
-1. Navigate into your MagicMirror's `modules` folder and execute `git clone https://github.com/mochman/MMM-Swipe.git`.  A new folder labeled `MMM-Swipe` will appear, cd into it.
-2. Execute `npm install` to install the dependencies
-3. You will need to run `sudo npm start` instead of `npm start` in order to read/write to the GPIO pins.
+1. Execute `git clone https://github.com/Simon089/MMM-Swipe.git` in your `modules` folder
+2. `cd` into it and `npm install`
 
 ## Using the module
 
@@ -33,35 +31,31 @@ To use this module, add it to the modules array in the `config/config.js` file:
 modules: [
 	{
 		module: 'MMM-Swipe',
-		position: 'bottom_left',	// Doesn't matter after it's setup.  It should be blank.
-									// Best results in one of the side regions like: bottom_left
+		position: 'bottom_center',
 		config: {
 			// See 'Configuration options' for more information.
-			echoLeftPin: 24, 		//Left Sensor's BCM Numbered Echo pin - REQUIRED
-			triggerLeftPin: 23, 	//Left Sensor's BCM Numbered trigger pin - REQUIRED
-			echoRightPin: 26, 		//Right Sensor's BCM Numbered Echo pin - REQUIRED
-			triggerRightPin: 25, 	//Right Sensor's BCM Numbered trigger pin - REQUIRED
-			useAsButton: false,		//Enable a GPIO output when you "press".
-			buttonPin: 8,
-			verbose: false,		
-			calibrate: false	
+			// trigger pin triggers both ultrasonic sensors
+			triggerPin: 23,
+			// both echo pins, use side the sensor is when you look at the mirror
+			echoLeftPin: 24,
+			echoRightPin: 26,
+			// everything < leftDistance/rightDistance is considered as a recognized object (e.g. your hand)
+			leftDistance: 50,
+			rightDistance: 50,
+			// everything > maxDistance is an invalid measurement
+			maxDistance: 200,
+			// writes the sensed distances on the mirror
+			calibrate: false,
+			// outputs measurements for a swipe in the console log
+			verbose: false,
 		}
 	}
 ]
 ````
 
-This module will use the `sendNotification(notification, payload)` to send:<br>
-`notification = 'MOVEMENT'`<br>
-`payload = 'Swipe Left'`, `'Swipe Right'`, or `'Press'`
-
-Please use as appropriate in your module using `notificationReceived(notification, payload, sender)`
-
-## Wiring the Sensors
-
-<b>Please wire the sensors using this diagram.</b>
-![Example: hcsr04.png] (https://raw.githubusercontent.com/clebert/r-pi-usonic/master/resources/hcsr04.png)
-
-Remember to use the GPIO numbers, not actual pins.  For example, if you want to use the defaults and you have a Raspberry Pi 2/3, echoLeftPin should be on GPIO24 (which is physical pin 18, etc...).
+This module will use `sendNotification(notification, payload)` to change pages with the MMM-Pages module mentioned above.
+`notification = PAGE_INCREMENT` for a `Swipe Right` and `notification = PAGE_INCREMENT` for a `Swipe Left`.
+`payload` will always be empty, since MMM-Pages ignores it for these two notifications.
 
 ## Configuration options
 
@@ -78,73 +72,59 @@ The following properties can be configured:
 	<thead>
 	<tbody>
 		<tr>
+			<td><code>triggerPin</code></td>
+			<td>Trigger pin for both sensors..<br>
+				<br><b>Example:</b> <code>23</code>
+				<br> This value is <b>REQUIRED</b>
+			</td>
+		</tr>
+		<tr>
 			<td><code>echoLeftPin</code></td>
-			<td>Left Sensor's Echo pin.<br>
+			<td>Left sensor's echo pin.<br>
 				<br><b>Example:</b> <code>24</code>
 				<br> This value is <b>REQUIRED</b>
 			</td>
 		</tr>
 		<tr>
 			<td><code>echoRightPin</code></td>
-			<td>Right Sensor's Echo pin.<br>
-				<br><b>Example:</b> <code>23</code>
-				<br> This value is <b>REQUIRED</b>
-			</td>
-		</tr>
-		<tr>
-			<td><code>triggerLeftPin</code></td>
-			<td>Left Sensor's Trigger pin.<br>
+			<td>Right Sensor's Trigger pin.<br>
 				<br><b>Example:</b> <code>26</code>
 				<br> This value is <b>REQUIRED</b>
-			</td>
-		</tr>
-		<tr>
-			<td><code>triggerRightPin</code></td>
-			<td>Right Sensor's Echo pin.<br>
-				<br><b>Example:</b> <code>25</code>
-				<br> This value is <b>REQUIRED</b>
-			</td>
-		</tr>
-		<tr>
-			<td><code>useAsButton</code></td>
-			<td>If you want to enable a GPIO output when you "press", change this to true<br>
-				<br><b>Example:</b> <code>true</code>
-				<br><b>Default Value:</b> <code>false</code>
-			</td>
-		</tr>
-		<tr>
-			<td><code>triggerRightPin</code></td>
-			<td>GPIO pin that will be activated when you "press" the sensors.<br>
-				<br><b>Example:</b> <code>8</code>
-				<br> This value is <b>REQUIRED if you enable useAsButton</b>
 			</td>
 		</tr>
 		<tr>
 			<td><code>leftDistance</code></td>
 			<td>Distance in cm that will initiate the movement detection with the left sensor<br>
 				<br><b>Example:</b> <code>20</code>
-				<br><b>Default Value:</b> <code>20</code>
+				<br><b>Default Value:</b> <code>50</code>
 			</td>
 		</tr>
 		<tr>
 			<td><code>rightDistance</code></td>
 			<td>Distance in cm that will initiate the movement detection with the right sensor<br>
 				<br><b>Example:</b> <code>20</code>
-				<br><b>Default Value:</b> <code>20</code>
+				<br><b>Default Value:</b> <code>50</code>
 			</td>
 		</tr>
 		<tr>
-			<td><code>verbose</code></td>
-			<td>Will display swipe data to the screen for checking<br>
+			<td><code>maxDistance</code></td>
+			<td>Distance in cm. Every measurement higher than this will be ignored<br>
+				<br><b>Example:</b> <code>150</code>
+				<br><b>Default Value:</b> <code>200</code>
+			</td>
+		</tr>
+		<tr>
+			<td><code>calibrate</code></td>
+			<td>This will dispay the distances read by your sensors on the screen so you can use a <code>leftDistance</code> & <code>rightDistance</code> that works for you.<br>
 				<br><b>Example:</b> <code>true</code>
 				<br><b>Default Value:</b> <code>false</code>
 			</td>
 		</tr>
 		<tr>
-			<td><code>calibrate</code></td>
-			<td>This will dispay the distances read by your sensors so you can use a <code>leftDistance</code> & <code>rightDistance</code> that works for you.<br>
+			<td><code>verbose</code></td>
+			<td>Will display swipe data to the console for checking<br>
 				<br><b>Example:</b> <code>true</code>
-				<br><b>Default Value:</b> <code>true</code>
+				<br><b>Default Value:</b> <code>false</code>
 			</td>
 		</tr>	
 	</tbody>

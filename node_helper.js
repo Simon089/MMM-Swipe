@@ -19,17 +19,16 @@ module.exports = NodeHelper.create({
     _config: {
         MICROSECONDS_PER_CM: 1e6 / 34321,
         SAMPLE_SIZE: 5,
-        TRIGGER_PULSE_TIME: 10, // microseconds (us)
-        SWIPE_DIFFERENCE_MULTIPLE: 1.3
+        TRIGGER_PULSE_TIME: 10 // microseconds (us)
     },
 
-    start: function() {
+    start: function () {
         this.config = {};
         this.started = false;
         this.mode = "off";
     },
 
-    setupListener: function() {
+    setupListener: function () {
         this.trigger = new Gpio(this.config.triggerPin, "out");
         this.echoLeft = new Gpio(this.config.echoLeftPin, "in", "both");
         this.echoRight = new Gpio(this.config.echoRightPin, "in", "both");
@@ -39,28 +38,30 @@ module.exports = NodeHelper.create({
         this.measureRightCb = this.measure.bind(this, "Right");
     },
 
-    startListener: function() {
+    startListener: function () {
         this.echoLeft.watch(this.measureLeftCb);
         this.echoRight.watch(this.measureRightCb);
         this.mode = "waiting";
+        console.log('[' + this.name + '] Listeners set up and started');
         this.sampleInterval = setInterval(this.doTrigger.bind(this), this.config.sampleInterval);
     },
 
-    stopListener: function() {
+    stopListener: function () {
         this.echoLeft.unwatch(this.measureLeftCb);
         this.echoRight.unwatch(this.measureRightCb);
         this.mode = "off";
+        console.log('[' + this.name + '] Listeners stopped');
         clearInterval(this.sampleInterval);
     },
 
-    doTrigger: function() {
+    doTrigger: function () {
         // Set trigger high for 10 microseconds
         this.trigger.writeSync(1);
         usleep(this._config.TRIGGER_PULSE_TIME);
         this.trigger.writeSync(0);
     },
 
-    measure: function(which, err, value) {
+    measure: function (which, err, value) {
         var diff, usDiff, dist;
         if (err) {
             throw err;
@@ -72,15 +73,16 @@ module.exports = NodeHelper.create({
             // Full conversion of hrtime to us => [0]*1000000 + [1]/1000
             usDiff = diff[0] * 1000000 + diff[1] / 1000;
 
-            if (this.mode !== "detect" && usDiff > this.config.sensorTimeout) { // Ignore bad measurements
+            dist = (usDiff / 2 / this._config.MICROSECONDS_PER_CM).toFixed(0);
+            if (this.mode !== "detect" && dist > this.config.maxDistance) {
+                // console.log('[' + this.name + '] Sensor timeout');
                 return;
             }
 
-            dist = usDiff / 2 / this._config.MICROSECONDS_PER_CM;
+            this.lastDistance[which] = dist;
 
-            this.lastDistance[which] = dist.toFixed(2);
-            
             if (this.config.calibrate) {
+                // console.log('[' + this.name + ']' + this.lastDistance["Left"] + ", " + this.lastDistance["Right"]);
                 this.sendSocketNotification('CALIBRATION', this.lastDistance);
             }
 
@@ -92,7 +94,8 @@ module.exports = NodeHelper.create({
         }
     },
 
-    monitor: function(which, dist) {
+    // monitor waits for the start of a swipe
+    monitor: function (which, dist) {
         if ((which === "Left" && dist <= this.config.leftDistance) ||
             (which === "Right" && dist <= this.config.rightDistance)) {
             var countdownTime = this.config.swipeSpeed / this._config.SAMPLE_SIZE;
@@ -101,54 +104,97 @@ module.exports = NodeHelper.create({
                 distances: { Right: [], Left: [] },
                 count: { Right: 0, Left: 0 },
                 avgerages: { Right: 0.0, Left: 0.0 },
+                starter: which,
             };
+
+            // we add the dist as a dict, so the entries are sorted by creation not by values
+            this.gestureInfo.distances[which].push({ 'dist': dist });
+            this.gestureInfo.count[which]++;
+            // Maybe a swipe starts, so we measure more often (countdownTime instead of sampleInterval)
             clearInterval(this.sampleInterval);
             this.sampleInterval = setInterval(this.doTrigger.bind(this), countdownTime);
         }
     },
 
-    detect: function(which, dist) {
+    // detect trys to detect a swipe, which already started
+    detect: function (which, dist) {
+        // todo: refactor since we always add dist ???
         if (this.gestureInfo.count[which] < this._config.SAMPLE_SIZE) {
-            this.gestureInfo.distances[which].push(dist);
-            this.gestureInfo.count[which] ++;
-        } else if (this.gestureInfo.count[which] === this._config.SAMPLE_SIZE) {
-            this.gestureInfo.distances[which].push(dist);
-            this.gestureInfo.avgerages[which] = statistics.median(this.gestureInfo.distances[which]).toFixed(0);
-            if (this.gestureInfo.count.Left === this._config.SAMPLE_SIZE && 
-                this.gestureInfo.count.Right === this._config.SAMPLE_SIZE) {
-                this.processSwipe();
+            this.gestureInfo.distances[which].push({ 'dist': dist });
+            this.gestureInfo.count[which]++;
+        }
+        if (this.gestureInfo.count.Left === this._config.SAMPLE_SIZE &&
+            this.gestureInfo.count.Right === this._config.SAMPLE_SIZE) {
+            this.processSwipe();
+        }
+    },
+
+    // We collected SAMPLE_SIZE measurements for both sensors, now we check if we have swipe
+    processSwipe: function () {
+        this.mode = "waiting";
+
+        if (this.config.verbose) {
+            console.log('[' + this.name + "] -------------------------");
+            console.log('[' + this.name + "]   Start: " + this.gestureInfo.starter);
+            console.log('[' + this.name + "]   Left : " + JSON.stringify(this.gestureInfo.distances["Left"]));
+            console.log('[' + this.name + "]   Right: " + JSON.stringify(this.gestureInfo.distances["Right"]));
+        }
+
+        // Change interval back from countdownTime to sampleInterval
+        clearInterval(this.sampleInterval);
+        this.sampleInterval = setInterval(this.doTrigger.bind(this), this.config.sampleInterval);
+
+        // todo: change this to 'which' and 'other'
+        // todo: since we dont use the median, we dont have to save the distanced but just a bool,
+        // and maybe use bit arithmetic
+        // todo: support press
+        if (this.gestureInfo.starter == "Left") {
+            if (this.gestureInfo.distances["Left"][3]["dist"] > this.config.leftDistance &&
+                this.gestureInfo.distances["Left"][4]["dist"] > this.config.leftDistance &&
+                this.gestureInfo.distances["Right"][0]["dist"] > this.config.rightDistance &&
+                this.gestureInfo.distances["Right"][1]["dist"] > this.config.rightDistance) {
+                if (this.gestureInfo.distances["Right"][2]["dist"] < this.config.rightDistance ||
+                    this.gestureInfo.distances["Right"][3]["dist"] < this.config.rightDistance ||
+                    this.gestureInfo.distances["Right"][4]["dist"] < this.config.rightDistance) {
+                    if (this.config.verbose) {
+                        console.log('[' + this.name + '] ----> Swipe Right');
+                    }
+                    this.sendSocketNotification('MOVEMENT', 'Swipe Right');
+                }
+            }
+        } else if (this.gestureInfo.starter == "Right") {
+            if (this.gestureInfo.distances["Right"][3]["dist"] > this.config.rightDistance &&
+                this.gestureInfo.distances["Right"][4]["dist"] > this.config.rightDistance &&
+                this.gestureInfo.distances["Left"][0]["dist"] > this.config.leftDistance &&
+                this.gestureInfo.distances["Left"][1]["dist"] > this.config.leftDistance) {
+                if (this.gestureInfo.distances["Left"][2]["dist"] < this.config.leftDistance ||
+                    this.gestureInfo.distances["Left"][3]["dist"] < this.config.leftDistance ||
+                    this.gestureInfo.distances["Left"][4]["dist"] < this.config.leftDistance) {
+                    if (this.config.verbose) {
+                        console.log('[' + this.name + '] ----> Swipe Left');
+                    }
+                    this.sendSocketNotification('MOVEMENT', 'Swipe Left');
+                }
             }
         }
     },
 
-    processSwipe: function() {
-        this.mode = "waiting";
-        clearInterval(this.sampleInterval);
-        this.sampleInterval = setInterval(this.doTrigger.bind(this), this.config.sampleInterval);
-
-        if (this.gestureInfo.avgerages.Left <= this.config.leftDistance && 
-            this.gestureInfo.avgerages.Right <= this.config.rightDistance) {
-            this.sendSocketNotification('MOVEMENT', 'Press');
-        } else if (this.gestureInfo.avgerages.Right * this._config.SWIPE_DIFFERENCE_MULTIPLE <= this.gestureInfo.avgerages.Left) {
-            this.sendSocketNotification('MOVEMENT', 'Swipe Right');
-        } else if (this.gestureInfo.avgerages.Left * this._config.SWIPE_DIFFERENCE_MULTIPLE <= this.gestureInfo.avgerages.Right) {
-            this.sendSocketNotification('MOVEMENT', 'Swipe Left');
-        }
-    },
-
-    socketNotificationReceived: function(notification, payload) {
-        var self = this;
+    socketNotificationReceived: function (notification, payload) {
         if (notification === 'CONFIG') {
             if (!this.started) {
                 this.config = payload;
                 this.setupListener();
                 this.started = true;
             }
-            this.sendSocketNotification("STARTED", null);
+            if (this.config.autoStart) {
+                this.startListener();
+            }
         } else if (notification === 'START') {
             this.startListener();
         } else if (notification === 'STOP') {
             this.stopListener();
+        } else if (notification === 'STATUS') {
+            console.log('[' + this.name + '] ' + payload);
         }
     },
 });
