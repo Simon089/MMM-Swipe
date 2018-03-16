@@ -1,6 +1,6 @@
 # Module: MMM-Swipe
 The `MMM-Swipe` program is a <a href="https://github.com/MichMich/MagicMirror">MagicMirror</a> addon module.
-This module uses 2 HC-SR04 ultrasonic sensors to determing hand position to produce a "Swipe Left", "Swipe Right", or "Press"
+This module uses 2 HC-SR04 ultrasonic sensors to determing hand position to produce a "Swipe Left" or "Swipe Right"
 
 # DEVELOPMENT NOTE:
 This is a fork of [MMM-Swipe](https://github.com/shbatm/MMM-Swipe) by shbatm. Thank you to shbatm and mochman, who created the initial module, for their work.
@@ -59,15 +59,16 @@ This module will use `sendNotification(notification, payload)` to change pages w
 
 ## Configuration options
 The following properties can be configured:
-Option | Description | Default Value
--------|-------------|---------------
-triggerPin | Trigger pin for both sensors. | `23`
-echoLeftPin | Left sensor's echo pin. | `24`
-echoRightPin | Right Sensor's Trigger pin. | `26`
-leftDistance | Distance in cm that will initiate the movement detection with the left sensor. | `50`
-rightDistance | Distance in cm that will initiate the movement detection with the right sensor. | `50`
-maxDistance | Distance in cm. Every measurement higher than this will be ignored. | `200`
-sampleInterval | Interval in `ms` for the sensors while no movement is detected. | `300`
-swipeSpeed | Duration in `ms` how long a swipe lasts | `800`
-calibrate | This will dispay the distances read by your sensors on the screen so you can use a `leftDistance` and `rightDistance` that works for you. | `false`
-verbose | Will display swipe data to the console for testing the swipe detection. | `false`
+
+|Option | Description | Default Value |
+|-------|-------------|---------------|
+|triggerPin  | Trigger pin for both sensors. | `23` |
+|echoLeftPin | Left sensor's echo pin. | `24` |
+|echoRightPin | Right Sensor's Trigger pin. | `26` |
+|leftDistance | Distance in cm that will initiate the movement detection with the left sensor. | `50` |
+|rightDistance | Distance in cm that will initiate the movement detection with the right sensor. | `50` |
+|maxDistance | Distance in cm. Every measurement higher than this will be ignored. | `200` |
+|sampleInterval | Interval in `ms` for the sensors while no movement is detected. | `300` |
+|swipeSpeed | Duration in `ms` how long a swipe lasts | `800` |
+|calibrate | This will dispay the distances read by your sensors on the screen so you can use a `leftDistance` and `rightDistance` that works for you. | `false` |
+|verbose | Will display swipe data to the console for testing the swipe detection. | `false` |
