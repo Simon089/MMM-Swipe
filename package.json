@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "onoff": "^1.1.3",
-    "usleep": "^1.0.3"
+    "usleep": "^1.0.3",
+    "math-statistics": "latest"
   },
   "devDependencies": {
     "electron-rebuild": "^1.2.1"

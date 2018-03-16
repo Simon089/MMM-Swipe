@@ -3,15 +3,15 @@ The `MMM-Swipe` program is a <a href="https://github.com/MichMich/MagicMirror">M
 This module uses 2 HC-SR04 ultrasonic sensors to determing hand position to produce a "Swipe Left", "Swipe Right", or "Press"
 
 # DEVELOPMENT NOTE:
-
 This is a fork of [MMM-Swipe](https://github.com/shbatm/MMM-Swipe) by shbatm. Thank you to shbatm and mochman, who created the initial module, for their work.
 
 ## Differences from original (made by shbatm):
-
 * Uses `onoff` node module instead of `mmm-usonic` and `mmm-gpio`
 * No SUDO required
 * Sensors/detection can be started/stopped automatically with the `autoStart` configuration option, or can be started/stopped by sending a notification from another module: e.g.: `this.sendNotification("SWIPE_CONTROL", "START")`.
 * Testing scripts included in the `usonic` folder if you want to play around with the sensors. Run them using `node usonic/testingXXX.js` from the MMM-Swipe folder. Also includes a script to use `pigpio` instead of `onoff` (still requires sudo).
+
+**NOTE:** After my (Simon089) changed, AutoStart is not implemented anymore. I also never used the tests in the `usonic` directory so I do not know if they still work, but I will leave them in here, if someone wants to use them.
 
 ## Differences from the fork (made by me):
 * Different method to detect a swipe
@@ -58,74 +58,16 @@ This module will use `sendNotification(notification, payload)` to change pages w
 `payload` will always be empty, since MMM-Pages ignores it for these two notifications.
 
 ## Configuration options
-
 The following properties can be configured:
-
-
-<table width="100%">
-	<!-- why, markdown... -->
-	<thead>
-		<tr>
-			<th>Option</th>
-			<th width="100%">Description</th>
-		</tr>
-	<thead>
-	<tbody>
-		<tr>
-			<td><code>triggerPin</code></td>
-			<td>Trigger pin for both sensors..<br>
-				<br><b>Example:</b> <code>23</code>
-				<br> This value is <b>REQUIRED</b>
-			</td>
-		</tr>
-		<tr>
-			<td><code>echoLeftPin</code></td>
-			<td>Left sensor's echo pin.<br>
-				<br><b>Example:</b> <code>24</code>
-				<br> This value is <b>REQUIRED</b>
-			</td>
-		</tr>
-		<tr>
-			<td><code>echoRightPin</code></td>
-			<td>Right Sensor's Trigger pin.<br>
-				<br><b>Example:</b> <code>26</code>
-				<br> This value is <b>REQUIRED</b>
-			</td>
-		</tr>
-		<tr>
-			<td><code>leftDistance</code></td>
-			<td>Distance in cm that will initiate the movement detection with the left sensor<br>
-				<br><b>Example:</b> <code>20</code>
-				<br><b>Default Value:</b> <code>50</code>
-			</td>
-		</tr>
-		<tr>
-			<td><code>rightDistance</code></td>
-			<td>Distance in cm that will initiate the movement detection with the right sensor<br>
-				<br><b>Example:</b> <code>20</code>
-				<br><b>Default Value:</b> <code>50</code>
-			</td>
-		</tr>
-		<tr>
-			<td><code>maxDistance</code></td>
-			<td>Distance in cm. Every measurement higher than this will be ignored<br>
-				<br><b>Example:</b> <code>150</code>
-				<br><b>Default Value:</b> <code>200</code>
-			</td>
-		</tr>
-		<tr>
-			<td><code>calibrate</code></td>
-			<td>This will dispay the distances read by your sensors on the screen so you can use a <code>leftDistance</code> & <code>rightDistance</code> that works for you.<br>
-				<br><b>Example:</b> <code>true</code>
-				<br><b>Default Value:</b> <code>false</code>
-			</td>
-		</tr>
-		<tr>
-			<td><code>verbose</code></td>
-			<td>Will display swipe data to the console for checking<br>
-				<br><b>Example:</b> <code>true</code>
-				<br><b>Default Value:</b> <code>false</code>
-			</td>
-		</tr>	
-	</tbody>
-</table>
+Option | Description | Default Value
+-------|-------------|---------------
+triggerPin | Trigger pin for both sensors. | `23`
+echoLeftPin | Left sensor's echo pin. | `24`
+echoRightPin | Right Sensor's Trigger pin. | `26`
+leftDistance | Distance in cm that will initiate the movement detection with the left sensor. | `50`
+rightDistance | Distance in cm that will initiate the movement detection with the right sensor. | `50`
+maxDistance | Distance in cm. Every measurement higher than this will be ignored. | `200`
+sampleInterval | Interval in `ms` for the sensors while no movement is detected. | `300`
+swipeSpeed | Duration in `ms` how long a swipe lasts | `800`
+calibrate | This will dispay the distances read by your sensors on the screen so you can use a `leftDistance` and `rightDistance` that works for you. | `false`
+verbose | Will display swipe data to the console for testing the swipe detection. | `false`
